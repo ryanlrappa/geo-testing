@@ -1,2 +1,2 @@
 # geo-testing
-Getting acquainted with geo lift testing tools
+Getting acquainted with open source geo lift testing tools
