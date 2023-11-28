@@ -19,12 +19,13 @@ def make_geoplot(r, plot_R_code, inline=True):
                                     Y_id = 'Y',
                                     time_id = 'time',
                                     location_id = 'location')"
-        inline (bool): Default True shows plots inline in ipython notebooks. 
+        inline (bool): Default True shows plots inline in ipython notebooks.
                        Set to False to output .png files
 
     Returns:
         R plot specified in first arg
     '''
+
     with localconverter(robjects.default_converter):
         
         # Import R's base package
@@ -81,12 +82,13 @@ def make_market_plot(r, market_id, inline=True):
     Args:
         r (R instance obj): R instance from r = robjects.r
         market_id (int): number from MarketSelections table ID col, denoting treatment group markets
-        inline (bool): Default True shows plots inline in ipython notebooks. 
+        inline (bool): Default True shows plots inline in ipython notebooks.
                        Set to False to output .png files
 
     Returns:
         R plot for power analysis diagnostic
     '''
+
     with localconverter(robjects.default_converter):
         
         # Create a temporary file to save the plot
@@ -115,24 +117,24 @@ def make_market_deep_dive_plot(r, market_id, lookback_window, inline=True):
     Shows power analysis curves from Meta GeoLift, either inline or in a .png file, per:
     facebookincubator.github.io/GeoLift/docs/GettingStarted/Walkthrough#power-output---deep-dive-into-power-curves
     
-    In order to ensure that power is consistent throughout time for these locations, 
-    we can run more than 1 simulation for each of the top contenders that came out of 
-    GeoLiftMarketSelection, using this function. 
+    In order to ensure that power is consistent throughout time for these locations,
+    we can run more than 1 simulation for each of the top contenders that came out of
+    GeoLiftMarketSelection, using this function.
     
-    NOTE: You could repeat this process for the top 5 treatment combinations that come out of 
-    GeoLiftMarketSelection, with increased lookback windows and compare their power curves. 
+    NOTE: You could repeat this process for the top 5 treatment combinations that come out of
+    GeoLiftMarketSelection, with increased lookback windows and compare their power curves.
 
     Args:
         r (R instance obj): R instance from r = robjects.r
         market_id (int): number from MarketSelections table ID col, denoting treatment group markets
         lookback_window (int): number of periods for lookback window for diagnostic
-        inline (bool): Default True shows plots inline in ipython notebooks. 
+        inline (bool): Default True shows plots inline in ipython notebooks.
                        Set to False to output .png files
 
     Returns:
         R plot for power analysis diagnostic
     '''
-    
+
     # R code to create diagnostic table power_data
     r(f'''
         market_id = {market_id}
@@ -161,7 +163,7 @@ def make_market_deep_dive_plot(r, market_id, lookback_window, inline=True):
     make_geoplot(r, p)
 
 
-def make_market_plot_multi_cell(r, market_ids, inline=True):
+def make_market_plot_multicell(r, market_ids, inline=True):
     '''
     Shows power analysis diagnostic plots from Meta GeoLift, either inline or in a .png file
     Meta GeoLift docs: https://facebookincubator.github.io/GeoLift/
@@ -169,18 +171,19 @@ def make_market_plot_multi_cell(r, market_ids, inline=True):
     Args:
         r (R instance obj): R instance from r = robjects.r
         market_ids (list of ints): numbers from Markets table ID col, denoting treatment group markets
-        inline (bool): Default True shows plots inline in ipython notebooks. 
+        inline (bool): Default True shows plots inline in ipython notebooks.
                        Set to False to output .png files
 
     Returns:
         R plot for power analysis diagnostic
     '''
+
     with localconverter(robjects.default_converter):
         
-        # Cells and Market IDs in a list
-        args = ", ".join("cell_{} = {}".format(i+1, n) for i, n in enumerate(market_ids))
+        # Cells and Market IDs in an R list
+        market_locs = ", ".join("cell_{} = {}".format(i+1, n) for i, n in enumerate(market_ids))
         r(f'''
-        test_locs <- list({args})
+        test_locs <- list({market_locs})
         ''')
 
         # Create a temporary file to save the plot
@@ -203,3 +206,61 @@ def make_market_plot_multi_cell(r, market_ids, inline=True):
         else:
             img.show()
 
+
+def make_market_deep_dive_plot_multicell(r, market_ids, lookback_window, inline=True):
+    '''
+    Shows power analysis curves from Meta GeoLift, either inline or in a .png file, per:
+    facebookincubator.github.io/GeoLift/docs/GettingStarted/Walkthrough#power-output---deep-dive-into-power-curves
+
+    In order to ensure that power is consistent throughout time for these locations,
+    we can run more than 1 simulation for each of the top contenders that came out of
+    GeoLiftMarketSelection, using this function.
+
+    NOTE: You could repeat this process for the top 5 treatment combinations that come out of
+    GeoLiftMarketSelection, with increased lookback windows and compare their power curves.
+
+    Args:
+        r (R instance obj): R instance from r = robjects.r
+        market_ids (list of ints): numbers from Markets table ID col, denoting treatment group markets
+        lookback_window (int): number of periods for lookback window for diagnostic
+        inline (bool): Default True shows plots inline in ipython notebooks.
+                       Set to False to output .png files
+
+    Returns:
+        R plot for power analysis diagnostic
+    '''
+
+    # Cells and Market IDs in an R list
+    market_locs = ", ".join("cell_{} = {}".format(i+1, n) for i, n in enumerate(market_ids))
+    r(f'''
+    test_locs <- list({market_locs})
+    ''')
+
+    # R code to create diagnostic table
+    r(f'''
+        Power <- MultiCellPower(Markets,
+                                test_markets = test_locs,
+                                effect_size =  seq(-0.5, 0.5, 0.05),
+                                lookback_window = {lookback_window})
+    ''')
+
+    with localconverter(robjects.default_converter):
+        # Create a temporary file to save the plot
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmpfile:
+            tmpfile_name = tmpfile.name
+
+        # Run the R plotting command and save the plot to the temporary file
+        r(f'''
+        png(filename="{tmpfile_name}", width=800, height=600, pointsize=16)
+        plot(Power, actual_values = TRUE, thed_values = FALSE, show_mde = TRUE, breaks_x_axis = 15, stacked = TRUE)
+        dev.off()
+        ''')
+
+        # Open the saved image using Pillow and return the image object
+        img = Image.open(tmpfile_name)
+
+        # Display the image
+        if inline == True:
+            display(img)
+        else:
+            img.show()
